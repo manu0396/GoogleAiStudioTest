@@ -24,10 +24,7 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        // Expose API Key to Android App
         buildConfigField("String", "API_KEY", "\"$myApiKey\"")
     }
 
@@ -43,7 +40,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    // Fixed for Kotlin 2.0
     kotlin {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -68,8 +64,11 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
 
-    // Include Google AI SDK directly if needed in App layer
-    implementation(libs.generativeai)
+    // Koin for Android (DI)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.android)
+    implementation(libs.koin.compose)
+    implementation(libs.koin.compose.viewmodel)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

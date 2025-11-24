@@ -25,19 +25,25 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            // FIX: Using direct string literal for Koin BOM (resolves the "Cannot convert notation" error)
+            implementation(platform("io.insert-koin:koin-bom:4.0.0"))
+
+            // Ktor dependencies (resolved via TOML accessors, managed by the BOM version)
             implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.ktor.client.logging)
 
-            // FIX: Use the new simplified aliases
-            implementation(libs.ktor.negotiation)
-            implementation(libs.ktor.serialization)
-
+            // KotlinX
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
+
+            // Koin (Core without version, version managed by BOM)
+            implementation(libs.koin.core)
         }
 
         val androidMain by getting {
             dependencies {
-                // The Google AI SDK is Android-only, so we keep it here
                 api(libs.generativeai)
                 implementation(libs.ktor.client.okhttp)
             }

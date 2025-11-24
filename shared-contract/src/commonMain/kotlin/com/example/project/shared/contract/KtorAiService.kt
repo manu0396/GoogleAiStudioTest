@@ -4,8 +4,11 @@ import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.*
 import kotlinx.serialization.json.*
 
@@ -35,19 +38,20 @@ data class ApiError(val code: Int? = null, val message: String? = null)
 @Serializable
 data class Candidate(val content: Content)
 
+// --- DTOs for Model Listing ---
+@Serializable
+data class ModelListResponse(val models: List<ModelInfo>? = null)
+
+@Serializable
+data class ModelInfo(val name: String)
+
 // --- Service ---
-class KtorAiService(private val apiKey: String) : AiService {
+class KtorAiService(
+    private val apiKey: String,
+    private val client: HttpClient // Injected via DI (Koin/Hilt)
+) : AiService {
 
-    private val client = HttpClient {
-        install(ContentNegotiation) {
-            json(Json {
-                ignoreUnknownKeys = true
-                isLenient = true
-                explicitNulls = false // Important for partial responses
-            })
-        }
-    }
-
+    // 1. UPDATED PERSONA: Senior Android Developer
     private val systemPrompt = """
         You are a Senior Android Developer & Architect.
         Your expertise is strictly focused on:
@@ -62,13 +66,25 @@ class KtorAiService(private val apiKey: String) : AiService {
         - If asked about architecture, default to Clean Architecture (Data -> Domain -> UI).
     """.trimIndent()
 
-    override suspend fun generateText(prompt: String): String {
+    override suspend fun generateContent(prompt: String): String {
         return try {
-            // FIX: Use the exact model string that works for REST
-            // Sometimes 'gemini-1.5-flash-latest' is safer if the specific version is rolling out
-            val model = "gemini-1.5-flash"
+            // 1. Dynamic Discovery: Ask Google what models I can use
+            // This avoids the 404 error by finding the valid model string for your region/key
+            val modelsUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
+            val listResponse: ModelListResponse = client.get(modelsUrl).body()
 
-            val response: GeminiResponse = client.post("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent") {
+            // 2. Select Best Model: Prefer Flash, fallback to first available
+            val validModelName = listResponse.models
+                ?.map { it.name }
+                ?.firstOrNull { it.contains("flash", ignoreCase = true) }
+                ?: listResponse.models?.firstOrNull()?.name
+                ?: throw Exception("No available models found for this API key.")
+
+            // 3. Generate Content
+            // Note: validModelName already contains "models/" prefix from the API list
+            val generateUrl = "https://generativelanguage.googleapis.com/v1beta/$validModelName:generateContent"
+
+            val response = client.post(generateUrl) {
                 parameter("key", apiKey)
                 contentType(ContentType.Application.Json)
                 setBody(
@@ -77,17 +93,66 @@ class KtorAiService(private val apiKey: String) : AiService {
                         systemInstruction = Content(listOf(Part(systemPrompt)))
                     )
                 )
-            }.body()
-
-            if (response.error != null) {
-                // If 404 persists, it means the API key region or Model ID is wrong.
-                return "API Error (${response.error.code}): ${response.error.message}"
             }
 
-            response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+            val responseBody = response.body<GeminiResponse>()
+
+            if (responseBody.error != null) {
+                return "API Error (${responseBody.error.code}): ${responseBody.error.message}"
+            }
+
+            responseBody.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
                 ?: "No response from Gemini."
+
         } catch (e: Exception) {
             "Network Error: ${e.message}"
+        }
+    }
+
+    override fun generateContentStream(prompt: String): Flow<String> = flow {
+        try {
+            // Identical discovery logic for streaming (simplified for brevity)
+            // Ideally, cache 'validModelName' in a variable so you don't fetch it every time
+            val modelsUrl = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
+            val listResponse: ModelListResponse = client.get(modelsUrl).body()
+            val validModelName = listResponse.models
+                ?.map { it.name }
+                ?.firstOrNull { it.contains("flash", ignoreCase = true) }
+                ?: listResponse.models?.firstOrNull()?.name
+                ?: "models/gemini-1.5-flash" // Fallback
+
+            val url = "https://generativelanguage.googleapis.com/v1beta/$validModelName:streamGenerateContent?key=$apiKey"
+
+            client.preparePost(url) {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    GeminiRequest(
+                        contents = listOf(Content(listOf(Part(prompt)))),
+                        systemInstruction = Content(listOf(Part(systemPrompt)))
+                    )
+                )
+            }.execute { httpResponse ->
+                val channel: ByteReadChannel = httpResponse.bodyAsChannel()
+                while (!channel.isClosedForRead) {
+                    val line = channel.readUTF8Line() ?: continue
+                    if (line.startsWith("data:")) {
+                        val jsonStr = line.removePrefix("data:").trim()
+                        if (jsonStr == "[DONE]") break
+
+                        try {
+                            val chunk = Json { ignoreUnknownKeys = true }.decodeFromString<GeminiResponse>(jsonStr)
+                            val text = chunk.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                            if (!text.isNullOrEmpty()) {
+                                emit(text)
+                            }
+                        } catch (e: Exception) {
+                            // Ignore parse errors for intermediate chunks
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            emit("Stream Error: ${e.message}")
         }
     }
 }

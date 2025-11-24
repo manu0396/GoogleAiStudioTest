@@ -13,20 +13,30 @@ coroutines = "1.9.0"
 serialization = "1.7.3"
 logback = "1.4.14"
 googleAiSdk = "0.9.0"
+koin = "4.0.0" # Latest Koin for KMP
 
 [libraries]
 # AI
 generativeai = { module = "com.google.ai.client.generativeai:generativeai", version.ref = "googleAiSdk" }
 
-# Ktor - Renamed aliases for safer access
+# Koin (Dependency Injection)
+koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref="koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref="koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref="koin" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref="koin" }
+
+# Ktor Client
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
-# SIMPLIFIED ALIAS: was ktor-client-content-negotiation
-ktor-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
-# SIMPLIFIED ALIAS: was ktor-serialization-kotlinx-json
-ktor-serialization = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-content = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 
+# Ktor Serialization
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+
+# Ktor Server
 ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
 
